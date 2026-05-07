@@ -1,0 +1,30 @@
+{
+  "name": "ses-mailgun-proxy",
+  "version": "0.1.0",
+  "description": "A Mailgun-compatible API proxy that sends email via AWS SES. Drop-in replacement for Mailgun in Ghost, Discourse, and other self-hosted apps.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "mailgun",
+    "ses",
+    "aws",
+    "ghost",
+    "email",
+    "proxy",
+    "self-hosted",
+    "newsletter"
+  ],
+  "author": "Robert Ratajczak",
+  "license": "MIT",
+  "dependencies": {
+    "fastify": "^4.28.1",
+    "@fastify/multipart": "^8.3.0",
+    "nodemailer": "^6.9.14",
+    "better-sqlite3": "^9.6.0",
+    "node-fetch": "^2.7.0",
+    "dotenv": "^16.4.5"
+  }
+}
