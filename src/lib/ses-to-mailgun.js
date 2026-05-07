@@ -53,28 +53,31 @@ function translate(sesEvent) {
 
     case 'Open': {
       const o = sesEvent.open;
+      const openRecipient = (sesEvent.mail?.destination || [])[0] || null;
       return [{
         event: 'opened',
         severity: null,
-        recipient: o?.ipAddress || null,
+        recipient: openRecipient,
         messageId,
         domain,
-        timestamp: ts,
+        timestamp: Math.floor(new Date(o?.timestamp || sesEvent.mail?.timestamp || Date.now()).getTime() / 1000),
         raw: sesEvent,
+        extra: { ip: o?.ipAddress, userAgent: o?.userAgent },
       }];
     }
 
     case 'Click': {
       const cl = sesEvent.click;
+      const clickRecipient = (sesEvent.mail?.destination || [])[0] || null;
       return [{
         event: 'clicked',
         severity: null,
-        recipient: null,
+        recipient: clickRecipient,
         messageId,
         domain,
-        timestamp: ts,
+        timestamp: Math.floor(new Date(cl?.timestamp || sesEvent.mail?.timestamp || Date.now()).getTime() / 1000),
         raw: sesEvent,
-        extra: { url: cl?.link },
+        extra: { url: cl?.link, ip: cl?.ipAddress, userAgent: cl?.userAgent },
       }];
     }
 
