@@ -1,5 +1,8 @@
 FROM node:22-alpine
 
+# Build tools required for better-sqlite3 native addon
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 # Install dependencies first (layer cache)
