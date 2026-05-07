@@ -34,7 +34,18 @@ async function sendMail(opts) {
   }
 
   const info = await transport.sendMail({ ...opts, headers });
-  return info.messageId;
+
+  // SES assigns its own message-id visible in SNS events.
+  // It appears in the SMTP response: "250 Ok 0110019e02d22ba1-xxxx-000000"
+  // We return this SES ID so Ghost stores it as provider_id and can later
+  // match incoming SNS events (which also carry the SES message-id).
+  const sesIdMatch = (info.response || '').match(/\b([0-9a-f]+-[0-9a-f-]+-000000)\b/i);
+  if (sesIdMatch) {
+    return sesIdMatch[1];
+  }
+
+  // Fallback: strip angle brackets from nodemailer's generated ID
+  return (info.messageId || '').replace(/^<|>$/g, '');
 }
 
 module.exports = { sendMail };

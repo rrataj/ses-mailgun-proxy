@@ -1,7 +1,7 @@
 const fetch = require('node-fetch');
 const { verifySnsMessage } = require('../lib/sns-verify');
 const { translate } = require('../lib/ses-to-mailgun');
-const { insertEvent, insertBounce, insertUnsubscribe } = require('../lib/db');
+const { insertEvent, insertBounce, insertUnsubscribe, lookupProxyMessageId } = require('../lib/db');
 
 /**
  * POST /sns
@@ -59,11 +59,16 @@ async function snsRoutes(fastify) {
       const events = translate(sesEvent);
 
       for (const ev of events) {
+        // Translate per-recipient SES message-id to the single proxy ID
+        // that Ghost stored as email_batches.provider_id.
+        const resolvedMessageId = (ev.messageId && lookupProxyMessageId(ev.messageId))
+          || ev.messageId;
+
         insertEvent({
           event:     ev.event,
           severity:  ev.severity,
           recipient: ev.recipient,
-          messageId: ev.messageId,
+          messageId: resolvedMessageId,
           domain:    ev.domain,
           timestamp: ev.timestamp,
           raw:       ev.raw,

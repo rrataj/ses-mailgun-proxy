@@ -1,6 +1,7 @@
+const crypto = require('crypto');
 const { verifyAuth } = require('../lib/auth');
 const { sendMail } = require('../lib/mailer');
-const { isUnsubscribed } = require('../lib/db');
+const { isUnsubscribed, insertMessageIdMap } = require('../lib/db');
 
 /**
  * POST /v3/:domain/messages
@@ -55,6 +56,10 @@ async function messagesRoutes(fastify) {
     // Parse recipients list
     const recipients = to.split(',').map(s => s.trim()).filter(Boolean);
 
+    // One stable ID for the whole batch — returned to Ghost as provider_id.
+    // Each individual SES message-id will be mapped to this in message_id_map.
+    const proxyMessageId = crypto.randomUUID();
+
     // Send one email per recipient with variables substituted
     const results = [];
     for (const recipient of recipients) {
@@ -86,7 +91,11 @@ async function messagesRoutes(fastify) {
           headers,
         });
 
-        fastify.log.info({ domain, email, messageId }, 'Message sent via SES');
+        // Map this per-recipient SES ID → batch proxy ID so SNS events
+        // can be translated back to the single ID Ghost stored as provider_id.
+        insertMessageIdMap(messageId, proxyMessageId);
+
+        fastify.log.info({ domain, email, messageId, proxyMessageId }, 'Message sent via SES');
         results.push(messageId);
       } catch (err) {
         fastify.log.error({ err, domain, email }, 'Failed to send message');
@@ -99,8 +108,10 @@ async function messagesRoutes(fastify) {
       return reply.send({ id: `<skipped-unsubscribed@${domain}>`, message: 'Skipped. All recipients unsubscribed.' });
     }
 
+    // Return the single proxy ID — Ghost stores this as email_batches.provider_id.
+    // All per-recipient SES IDs are mapped to it in message_id_map.
     return reply.send({
-      id: results[0] || `<${Date.now()}.proxy@${domain}>`,
+      id: proxyMessageId,
       message: 'Queued. Thank you.',
     });
   });

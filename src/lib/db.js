@@ -27,6 +27,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
   CREATE INDEX IF NOT EXISTS idx_events_recipient ON events(recipient);
 
+  -- Maps each per-recipient SES message-id to the single proxy message-id
+  -- returned to Ghost for the whole batch (stored as email_batches.provider_id).
+  CREATE TABLE IF NOT EXISTS message_id_map (
+    ses_id    TEXT PRIMARY KEY,
+    proxy_id  TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_mid_proxy ON message_id_map(proxy_id);
+
   CREATE TABLE IF NOT EXISTS bounces (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     address    TEXT UNIQUE NOT NULL,
@@ -105,6 +115,28 @@ function deleteUnsubscribe(address) {
   return db.prepare('DELETE FROM unsubscribes WHERE address = ?').run(address);
 }
 
+// ── Message-ID mapping ────────────────────────────────────────────
+
+/**
+ * Record that sesId belongs to a batch identified by proxyId.
+ * Called once per recipient after each individual SMTP send.
+ */
+function insertMessageIdMap(sesId, proxyId) {
+  db.prepare(`
+    INSERT OR IGNORE INTO message_id_map (ses_id, proxy_id, created_at)
+    VALUES (?, ?, ?)
+  `).run(sesId, proxyId, Math.floor(Date.now() / 1000));
+}
+
+/**
+ * Given an SES message-id, return the proxy message-id for the batch.
+ * Returns null if not found (e.g. old events before this feature was added).
+ */
+function lookupProxyMessageId(sesId) {
+  const row = db.prepare('SELECT proxy_id FROM message_id_map WHERE ses_id = ?').get(sesId);
+  return row ? row.proxy_id : null;
+}
+
 module.exports = {
   insertEvent,
   queryEvents,
@@ -115,4 +147,6 @@ module.exports = {
   getUnsubscribes,
   isUnsubscribed,
   deleteUnsubscribe,
+  insertMessageIdMap,
+  lookupProxyMessageId,
 };

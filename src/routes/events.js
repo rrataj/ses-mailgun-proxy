@@ -29,15 +29,20 @@ async function eventsRoutes(fastify) {
 
     const items = rows.map(toMailgunItem);
 
-    return reply.send({
-      items,
-      paging: {
-        next:     '',
-        previous: '',
-        first:    '',
-        last:     '',
-      },
-    });
+    // mailgun.js SDK calls `new URL(value)` on every paging key.
+    // Empty strings cause an uncaught exception and events are silently dropped.
+    // Omit keys that have no real URL — SDK handles missing keys gracefully.
+    const baseUrl = `https://api.mailgun.net/v3/${domain}/events`;
+    const paging = {
+      first: `${baseUrl}?${new URLSearchParams({ ...request.query, page: 'first' })}`,
+      last:  `${baseUrl}?${new URLSearchParams({ ...request.query, page: 'last' })}`,
+    };
+    // Only add next/previous if there might be more pages
+    if (items.length >= (limit ? Math.min(Number(limit), 300) : 100)) {
+      paging.next = `${baseUrl}?${new URLSearchParams({ ...request.query, page: 'next' })}`;
+    }
+
+    return reply.send({ items, paging });
   });
 }
 
