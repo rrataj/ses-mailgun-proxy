@@ -59,6 +59,7 @@ SMTP_PORT=587
 SMTP_USER=YOUR_SES_SMTP_USER
 SMTP_PASS=YOUR_SES_SMTP_PASSWORD
 SES_CONFIGURATION_SET=your-ses-config-set
+NODE_ENV=production
 ```
 
 ### 2. Run with Docker
@@ -66,6 +67,8 @@ SES_CONFIGURATION_SET=your-ses-config-set
 ```bash
 docker compose up -d
 ```
+
+> **Note:** The first build takes ~2 minutes because `better-sqlite3` compiles a native addon. Subsequent builds are cached.
 
 ### 3. Configure Ghost
 
@@ -77,6 +80,14 @@ In Ghost Admin go to **Settings → Email newsletter**:
 | Mailgun private API key | value of `PROXY_API_KEY` from your `.env` |
 | Mailgun API URL | `https://your-proxy-host.com` |
 | Region | EU (or US, doesn't matter) |
+
+If Ghost and the proxy are on the **same Docker network**, set the Mailgun API URL to the internal hostname to avoid going through the public internet:
+
+```
+http://ses-mailgun-proxy:3000
+```
+
+This is more reliable and avoids TLS overhead for server-to-server calls.
 
 ### 4. Set up SES event tracking (optional but recommended)
 
@@ -101,8 +112,43 @@ In Ghost Admin go to **Settings → Email newsletter**:
 | `PORT` | No | `3000` | HTTP port |
 | `HOST` | No | `0.0.0.0` | HTTP bind address |
 | `LOG_LEVEL` | No | `info` | Pino log level |
+| `NODE_ENV` | No | — | Set to `production` to disable pino-pretty dev logging |
 
-## Adding to an existing Ghost docker-compose
+## Deployment patterns
+
+### A. Dedicated subdomain (recommended)
+
+Give the proxy its own subdomain (e.g. `mail.yourdomain.com`) with a TLS certificate, then point Ghost's Mailgun API URL at it. SNS webhooks go to `https://mail.yourdomain.com/sns`.
+
+### B. Path-based routing on an existing domain
+
+If you can't create a new subdomain, route `/v3` and `/sns` from an existing domain through your reverse proxy. Example for **Nginx Proxy Manager** using the "Advanced" custom config on the existing host:
+
+```nginx
+location /sns {
+    proxy_pass http://ses-mailgun-proxy:3000/sns;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /v3 {
+    proxy_pass http://ses-mailgun-proxy:3000/v3;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Then configure Ghost with:
+- Mailgun API URL: `http://ses-mailgun-proxy:3000` (internal Docker hostname)
+- SNS subscription endpoint: `https://yourdomain.com/sns`
+
+### C. Adding to an existing Ghost docker-compose
 
 ```yaml
 services:
